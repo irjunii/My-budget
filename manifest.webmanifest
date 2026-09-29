@@ -3,8 +3,8 @@
   "short_name": "Budget",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f7f4ee",
-  "theme_color": "#f7f4ee",
+  "background_color": "#eef5fb",
+  "theme_color": "#eef5fb",
   "lang": "en",
   "icons": []
 }
