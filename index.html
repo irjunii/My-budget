@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f4ee">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="My Budget">
+<link rel="manifest" href="manifest.webmanifest">
+<title>My Budget</title>
+<style>
+:root{--bg:#f7f4ee;--card:#fffdf9;--ink:#292723;--muted:#777269;--line:#e6dfd4;--accent:#6f7564;--good:#65755d;--warn:#a06f43}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Arial,sans-serif}
+header{padding:calc(18px + env(safe-area-inset-top)) 18px 16px;background:var(--bg);position:sticky;top:0;z-index:5}
+h1{font-size:27px;margin:0 0 4px} h2{font-size:19px;margin:0 0 12px}.sub{color:var(--muted)}
+nav{display:flex;gap:8px;padding:0 14px 10px;overflow:auto;position:sticky;top:79px;z-index:4;background:var(--bg)}
+nav button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:9px 14px;white-space:nowrap}
+nav button.active{background:var(--ink);color:white}
+main{padding:8px 14px 100px;max-width:720px;margin:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:15px;margin-bottom:12px;box-shadow:0 2px 10px #00000005}
+.big{font-size:28px;font-weight:700}.label{color:var(--muted);font-size:13px}.positive{color:var(--good)}.negative{color:var(--warn)}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.bar{height:8px;background:#eee8de;border-radius:99px;overflow:hidden;margin-top:8px}.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+button,input,select{font:inherit} button{cursor:pointer;border:0}.primary{background:var(--ink);color:white;padding:11px 14px;border-radius:12px}.secondary{background:#eee9df;padding:10px 12px;border-radius:12px}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:white;color:var(--ink)}
+.form{display:grid;gap:10px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.list{display:grid;gap:8px}.item{padding:11px 0;border-bottom:1px solid var(--line)}.item:last-child{border-bottom:0}
+.small{font-size:12px;color:var(--muted)}.pill{font-size:12px;padding:4px 8px;border-radius:999px;background:#eee9df}.danger{color:#a44;background:none;padding:4px}
+.hidden{display:none}.empty{padding:25px 5px;text-align:center;color:var(--muted)}
+footer{position:fixed;bottom:0;left:0;right:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#f7f4eedf;backdrop-filter:blur(12px);border-top:1px solid var(--line);z-index:10}
+footer button{width:100%;max-width:720px;display:block;margin:auto;font-size:16px;padding:13px}
+@media(min-width:650px){main{padding-top:15px}.grid{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<header><h1>My Budget</h1><div class="sub" id="monthLabel"></div></header>
+<nav id="tabs">
+<button class="active" data-tab="month">This month</button>
+<button data-tab="funds">Funds</button>
+<button data-tab="transactions">Spending</button>
+<button data-tab="settings">Rules</button>
+</nav>
+<main id="app"></main>
+<footer><button class="primary" onclick="openAdd()">＋ Add spending</button></footer>
+<script>
+const defaultCategories=[
+["Housing + utilities",450,"fixed"],["Groceries",220,"rollover"],["Health insurance",141,"fixed"],["University",60,"fixed"],
+["Transport",30,"cap:90:Travel"],["Household",15,"cap:50:Household Wishlist"],["Personal care",5,"cap:30:Travel"],
+["Health",5,"cap:100:Other"],["Clothes",15,"cap:100:Travel"],["Hobbies",15,"cap:200:Travel"],
+["Social / leisure",25,"cap:200:Travel"],["Travel",25,"fund"],["Gifts",5,"fund"],["Christmas",10,"fund"],["General savings",29,"fund"]
+];
+let state=JSON.parse(localStorage.getItem("budgetState")||"null")||{income:1050,cats:Object.fromEntries(defaultCategories.map(x=>[x[0],{monthly:x[1],rule:x[2],balance:0}])),tx:[],months:{}};
+function save(){localStorage.setItem("budgetState",JSON.stringify(state));}
+function euro(n){return new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n)}
+function monthKey(){let d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
+function monthName(){return new Date().toLocaleDateString("en-GB",{month:"long",year:"numeric"})}
+document.getElementById("monthLabel").textContent=monthName();
+function spent(cat){return state.tx.filter(x=>x.month===monthKey()&&x.cat===cat).reduce((a,x)=>a+x.amount,0)}
+function available(cat){let c=state.cats[cat];return (c.balance||0)+c.monthly-spent(cat)}
+function renderTab(tab){
+let el=document.getElementById("app");
+if(tab==="month") renderMonth(el); else if(tab==="funds") renderFunds(el); else if(tab==="transactions") renderTx(el); else renderSettings(el);
+}
+function renderMonth(el){
+let fixed=Object.keys(state.cats).filter(k=>state.cats[k].rule==="fixed");
+let committed=fixed.reduce((s,k)=>s+state.cats[k].monthly,0);
+let remaining=state.income-committed;
+let monthSpend=state.tx.filter(x=>x.month===monthKey()).reduce((s,x)=>s+x.amount,0);
+el.innerHTML=`<div class="grid">
+<div class="card"><div class="label">Income</div><div class="big">${euro(state.income)}</div></div>
+<div class="card"><div class="label">Spent</div><div class="big">${euro(monthSpend)}</div></div>
+<div class="card"><div class="label">Fixed plan</div><div class="big">${euro(committed)}</div></div>
+<div class="card"><div class="label">Uncommitted</div><div class="big">${euro(remaining)}</div></div></div>
+<div class="card"><h2>Category balances</h2><div class="list">${Object.entries(state.cats).map(([k,c])=>{
+let a=available(k), s=spent(k), base=(c.balance||0)+c.monthly;
+let pct=base?Math.min(100,Math.max(0,s/base*100)):0;
+return `<div class="item"><div class="row"><strong>${k}</strong><span class="${a<0?'negative':'positive'}">${euro(a)}</span></div><div class="small">€${c.monthly}/month · ${ruleText(c.rule)}</div><div class="bar"><i style="width:${pct}%"></i></div></div>`}).join("")}</div></div>`;
+}
+function ruleText(r){if(r==="fixed")return"fixed";if(r==="rollover")return"rolls over";if(r==="fund")return"sinking fund";let p=r.split(":");return`cap ${euro(+p[1])} → ${p[2]}`}
+function renderFunds(el){
+let funds=Object.entries(state.cats).filter(([k,c])=>c.rule==="fund"||c.rule.startsWith("cap:"));
+el.innerHTML=`<div class="card"><h2>Sinking funds & caps</h2><p class="sub">These balances build over time. When a capped category reaches its cap, future excess is transferred automatically according to its rule when you close/advance a month.</p><div class="list">${funds.map(([k,c])=>`<div class="item"><div class="row"><strong>${k}</strong><strong>${euro(c.balance||0)}</strong></div><div class="small">${ruleText(c.rule)} · ${euro(c.monthly)}/month</div></div>`).join("")}</div></div>`;
+}
+function renderTx(el){
+let tx=state.tx.filter(x=>x.month===monthKey()).sort((a,b)=>b.date.localeCompare(a.date));
+el.innerHTML=`<div class="card"><div class="row"><h2>Spending this month</h2><span class="pill">${tx.length} transactions</span></div>${tx.length?`<div class="list">${tx.map(x=>`<div class="item"><div class="row"><div><strong>${x.note||x.cat}</strong><div class="small">${x.date} · ${x.cat}</div></div><div>${euro(x.amount)} <button class="danger" onclick="delTx('${x.id}')">×</button></div></div></div>`).join("")}`:`<div class="empty">No spending recorded yet.</div>`}</div>`;
+}
+function renderSettings(el){
+el.innerHTML=`<div class="card"><h2>Budget rules</h2><div class="form"><label>Monthly income<input id="income" type="number" step=".01" value="${state.income}"></label><button class="primary" onclick="saveIncome()">Save income</button></div></div>
+<div class="card"><h2>Categories</h2><div class="list">${Object.entries(state.cats).map(([k,c])=>`<div class="item"><div class="row"><strong>${k}</strong><span class="small">${ruleText(c.rule)}</span></div><div class="two"><label class="small">Monthly<input data-cat="${encodeURIComponent(k)}" class="monthly" type="number" step=".01" value="${c.monthly}"></label><label class="small">Current fund balance<input data-cat="${encodeURIComponent(k)}" class="balance" type="number" step=".01" value="${c.balance||0}"></label></div></div>`).join("")}</div><button class="primary" onclick="saveRules()">Save changes</button></div>
+<div class="card"><h2>Important</h2><p class="sub">Your data is stored on this device in your browser. The app does not send your spending anywhere.</p></div>`;
+}
+function saveIncome(){state.income=+document.getElementById("income").value||0;save();renderTab("settings")}
+function saveRules(){document.querySelectorAll(".monthly").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].monthly=+i.value||0);document.querySelectorAll(".balance").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].balance=+i.value||0);save();renderTab("settings")}
+function openAdd(){
+let cats=Object.keys(state.cats).filter(k=>state.cats[k].rule!=="fixed"||k==="Groceries");
+let modal=document.createElement("div");modal.style.cssText="position:fixed;inset:0;background:#0006;z-index:20;display:flex;align-items:flex-end";
+modal.innerHTML=`<div style="background:var(--card);width:100%;max-width:720px;margin:auto;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom))"><div class="row"><h2>Add spending</h2><button onclick="this.closest('div[style]').remove()">✕</button></div><div class="form"><label>Amount<input id="amt" type="number" inputmode="decimal" step=".01" placeholder="0.00"></label><label>Category<select id="cat">${cats.map(k=>`<option>${k}</option>`).join("")}</select></label><label>Date<input id="date" type="date" value="${new Date().toISOString().slice(0,10)}"></label><label>What was it? <span class="small">(optional)</span><input id="note" placeholder="e.g. REWE, notebook, train ticket"></label><button class="primary" onclick="addTx(this)">Save spending</button></div></div>`;
+document.body.appendChild(modal)
+}
+function addTx(btn){
+let amount=+document.getElementById("amt").value;if(!amount)return;
+let date=document.getElementById("date").value, cat=document.getElementById("cat").value;
+state.tx.push({id:crypto.randomUUID(),amount,cat,date,month:date.slice(0,7),note:document.getElementById("note").value});save();btn.closest('div[style]').remove();renderTab("transactions");
+}
+function delTx(id){state.tx=state.tx.filter(x=>x.id!==id);save();renderTab("transactions")}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");renderTab(b.dataset.tab)});
+renderTab("month");
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body></html>
