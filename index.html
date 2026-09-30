@@ -12,7 +12,7 @@
 <style>
 :root{
  --bg:#eef5fb;--card:#fff;--ink:#26313d;--muted:#74808c;--line:#dbe6ef;
- --blue:#9cc9e8;--blue2:#dceefa;--lav:#d8d0ee;--sage:#cddfcf;--peach:#f1d2bc;
+ --blue:#9cc9e8;--blue2:#dceefa;--lav:#d8d0ee;--sage:#cddfcf;--peach:#f1d2bc;--butter:#f4e4b8;
  --good:#4d7864;--warn:#ad6a4b;--shadow:0 5px 20px rgba(49,76,98,.08)
 }
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Arial,sans-serif}
@@ -114,8 +114,7 @@ function fundActivities(cat){
  let arr=[...months].sort().reverse(), out=[];
  for(let m of arr){
   let entries=[];
-  if(c.rule==="fund"||c.rule==="cap:"+c.rule.split(":")[1]) entries.push({type:"plus",label:"Monthly contribution",amount:c.monthly});
-  else if(c.rule==="fund") entries.push({type:"plus",label:"Monthly contribution",amount:c.monthly});
+  if(c.rule==="fund") entries.push({type:"plus",label:"Monthly contribution",amount:c.monthly});
   let tx=state.tx.filter(x=>x.cat===cat&&x.month===m);
   for(let x of tx) entries.push({type:"minus",label:x.note||"Spending",amount:x.amount,date:x.date});
   let transfers=state.transfers.filter(x=>(x.to===cat||x.from===cat)&&x.month===m);
@@ -125,6 +124,7 @@ function fundActivities(cat){
  return out;
 }
 function openFund(cat){
+ closeMonthAndApplyCaps(key());
  let c=state.cats[cat], acts=fundActivities(cat);
  let modal=document.createElement("div");modal.className="modal";
  modal.innerHTML=`<div class="sheet"><button class="back" onclick="this.closest('.modal').remove()">← Back</button><div class="circleWrap"><div class="circle" style="--pct:${Math.min(100,Math.max(0,(balance(cat)/(c.rule.startsWith('cap:')?+c.rule.split(':')[1]:Math.max(100,balance(cat)+c.monthly)))*100))}%"><div class="circleInner"><strong>${euro(balance(cat))}</strong><span>current</span></div></div><div><h2>${cat}</h2><div class="sub">${euro(c.monthly)} added each month · ${ruleText(c.rule)}</div></div></div><div class="card" style="margin-top:16px"><h3>Activity</h3>${acts.length?acts.map(a=>`<div class="monthBlock"><div class="row"><strong>${label(a.m)}</strong><span class="small">${a.entries.length} entries</span></div>${a.entries.map(e=>`<div class="activity"><span>${esc(e.label)}${e.date?`<span class="small"> · ${e.date}</span>`:""}</span><strong class="${e.type}">${e.type==="plus"?"+":"−"}${euro(e.amount)}</strong></div>`).join("")}</div>`).join(""):`<div class="empty">No activity yet.</div>`}</div></div>`;
@@ -145,13 +145,82 @@ function addTx(btn){
 }
 function delTx(id){state.tx=state.tx.filter(x=>x.id!==id);save();renderTab("transactions")}
 function renderSettings(el){
- el.innerHTML=`<div class="card"><h2>Budget rules</h2><div class="form"><label>Monthly income<input id="income" type="number" step=".01" value="${state.income}"></label><button class="primary" onclick="saveIncome()">Save income</button></div></div>
- <div class="card"><h2>Categories</h2><div class="list">${Object.entries(state.cats).map(([k,c])=>`<div class="item"><div class="row"><strong>${k}</strong><span class="small">${ruleText(c.rule)}</span></div><div class="two"><label class="small">Monthly<input data-cat="${encodeURIComponent(k)}" class="monthly" type="number" step=".01" value="${c.monthly}"></label><label class="small">Current balance<input data-cat="${encodeURIComponent(k)}" class="balance" type="number" step=".01" value="${c.balance||0}"></label></div></div>`).join("")}</div><button class="primary" onclick="saveRules()">Save changes</button></div>
- <div class="card"><h2>Your rules</h2><p class="sub">The app keeps your monthly amounts editable, so changing rent later won't require rebuilding anything. Caps and destinations can also be adjusted in the data structure if you want to change the system later.</p></div>`;
+ const options=Object.keys(state.cats);
+ el.innerHTML=`<div class="card"><h2>Budget rules</h2><div class="form">
+ <label>Monthly income<input id="income" type="number" step=".01" value="${state.income}"></label>
+ <button class="primary" onclick="saveIncome()">Save income</button></div></div>
+ <div class="card"><div class="row"><h2>Categories</h2><span class="pill">editable</span></div>
+ <p class="sub">Change monthly amounts, caps and where excess money should go. Funds can also be created below.</p>
+ <div class="list">${Object.entries(state.cats).map(([k,c])=>{
+   let parts=c.rule.split(":"), cap=parts[0]==="cap"?parts[1]:"", dest=parts[0]==="cap"?parts.slice(2).join(":"):"";
+   return `<div class="item">
+    <div class="row"><strong>${esc(k)}</strong><span class="small">${ruleText(c.rule)}</span></div>
+    <div class="two">
+      <label class="small">Monthly<input data-cat="${encodeURIComponent(k)}" class="monthly" type="number" step=".01" value="${c.monthly}"></label>
+      <label class="small">Current balance<input data-cat="${encodeURIComponent(k)}" class="balance" type="number" step=".01" value="${c.balance||0}"></label>
+    </div>
+    ${parts[0]==="cap"?`<div class="two" style="margin-top:8px">
+      <label class="small">Cap<input data-cat="${encodeURIComponent(k)}" class="cap" type="number" step=".01" value="${cap}"></label>
+      <label class="small">Excess goes to<select data-cat="${encodeURIComponent(k)}" class="dest">${options.filter(x=>x!==k).map(x=>`<option ${x===dest?"selected":""}>${esc(x)}</option>`).join("")}<option value="__NONE__" ${!dest?"selected":""}>Don't transfer</option></select></label>
+    </div>`:""}
+   </div>`}).join("")}</div>
+ <button class="primary" onclick="saveRules()">Save changes</button></div>
+ <div class="card"><h2>Create a fund</h2><p class="sub">Make a new sinking fund whenever you need one. It will automatically become available as a transfer destination.</p>
+ <div class="two"><input id="newFundName" placeholder="e.g. New laptop"><input id="newFundAmount" type="number" step=".01" value="0" placeholder="Starting balance"></div>
+ <button class="secondary" style="margin-top:10px" onclick="createFund()">＋ Create fund</button></div>
+ <div class="card"><h2>Your funds</h2><div class="list">${Object.entries(state.cats).filter(([k,c])=>c.rule==="fund").map(([k,c])=>`<div class="item"><div class="row"><div><strong>${esc(k)}</strong><div class="small">€${c.monthly}/month · sinking fund</div></div><div><strong>${euro(c.balance||0)}</strong> <button class="danger" onclick="deleteFund('${esc(k)}')">×</button></div></div></div>`).join("")}</div></div>`;
 }
 function saveIncome(){state.income=+document.getElementById("income").value||0;save();renderTab("settings")}
-function saveRules(){document.querySelectorAll(".monthly").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].monthly=+i.value||0);document.querySelectorAll(".balance").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].balance=+i.value||0);save();renderTab("settings")}
+function saveRules(){
+ document.querySelectorAll(".monthly").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].monthly=+i.value||0);
+ document.querySelectorAll(".balance").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].balance=+i.value||0);
+ document.querySelectorAll(".cap").forEach(i=>{
+   const k=decodeURIComponent(i.dataset.cat), c=state.cats[k];
+   const destEl=document.querySelector(`.dest[data-cat="${i.dataset.cat}"]`);
+   const dest=destEl && destEl.value!=="__NONE__"?destEl.value:"";
+   c.rule=`cap:${+i.value||0}:${dest}`;
+ });
+ save(); renderTab("settings");
+}
+function createFund(){
+ const input=document.getElementById("newFundName"), amount=+(document.getElementById("newFundAmount").value||0);
+ const name=input.value.trim();
+ if(!name)return alert("Please enter a fund name.");
+ if(state.cats[name])return alert("A category or fund with that name already exists.");
+ state.cats[name]={monthly:0,rule:"fund",balance:amount};
+ save();renderTab("settings");
+}
+function deleteFund(name){
+ if(["Travel","Gifts","Christmas","General savings"].includes(name))return alert("This built-in fund is protected.");
+ const used=Object.values(state.cats).some(c=>c.rule.startsWith("cap:")&&c.rule.split(":").slice(2).join(":")===name);
+ if(used)return alert("This fund is still selected as an excess destination. Change that rule first.");
+ if(!confirm(`Delete the fund "${name}"? Its balance will be removed.`))return;
+ delete state.cats[name];save();renderTab("settings");
+}
+function applyCapsForMonth(month){
+ // Move amounts above caps from capped categories into their selected destinations.
+ // A transfer is recorded once per category/month.
+ for(const [name,c] of Object.entries(state.cats)){
+   if(!c.rule.startsWith("cap:"))continue;
+   const p=c.rule.split(":"), cap=+p[1], dest=p.slice(2).join(":");
+   if(!dest || !state.cats[dest])continue;
+   const monthSpent=spent(name,month);
+   const carried=(c.balance||0);
+   const availableBefore=carried+c.monthly-monthSpent;
+   if(availableBefore<=cap)continue;
+   const excess=availableBefore-cap;
+   const already=state.transfers.filter(t=>t.month===month&&t.from===name&&t.to===dest).reduce((s,t)=>s+t.amount,0);
+   const amount=Math.max(0,excess-already);
+   if(amount<=0)continue;
+   c.balance=Math.max(0,availableBefore-amount);
+   state.cats[dest].balance=(state.cats[dest].balance||0)+amount;
+   state.transfers.push({id:crypto.randomUUID(),month,from:name,to:dest,amount});
+ }
+}
+function closeMonthAndApplyCaps(month=key()){applyCapsForMonth(month);save();}
+document.querySelectorAll(".monthly").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].monthly=+i.value||0);document.querySelectorAll(".balance").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].balance=+i.value||0);save();renderTab("settings")}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>renderTab(b.dataset.tab));
+closeMonthAndApplyCaps(key());
 renderTab("month");
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
