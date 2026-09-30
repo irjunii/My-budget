@@ -218,7 +218,6 @@ function applyCapsForMonth(month){
  }
 }
 function closeMonthAndApplyCaps(month=key()){applyCapsForMonth(month);save();}
-document.querySelectorAll(".monthly").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].monthly=+i.value||0);document.querySelectorAll(".balance").forEach(i=>state.cats[decodeURIComponent(i.dataset.cat)].balance=+i.value||0);save();renderTab("settings")}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>renderTab(b.dataset.tab));
 closeMonthAndApplyCaps(key());
 renderTab("month");
